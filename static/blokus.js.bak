@@ -1,0 +1,614 @@
+// blokus.js
+let selectedPieceIndex = -1;
+let currentPlayerIndex = 0;
+let gameState = null;
+let currentBoardSize = 20;
+let gameEnded = false;
+const PLAYER_COLORS = [
+    { number: 1, color: "#FF0000", corner: [0, 0] },
+    { number: 2, color: "#0000FF", corner: [19, 19] },
+    { number: 3, color: "#00FF00", corner: [19, 0] },
+    { number: 4, color: "#FFFF00", corner: [0, 19] }
+];
+const scoreModal = document.createElement('div');
+scoreModal.id = 'score-modal';
+scoreModal.style.display = 'none';
+document.body.appendChild(scoreModal);
+
+let appliedLevels = [2, 2, 2, 2];
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialX = 0;
+let initialY = 0;
+
+const TURN_TIME = 60;
+let timer = null;
+let timeLeft = 0;
+
+// AI プレイヤーのインデックスを格納する配列
+let aiPlayers = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+    showLevelModal();
+});
+
+function showLevelModal() {
+    document.getElementById('level-modal').style.display = 'flex';
+    document.querySelector('.container').style.filter = 'blur(5px)';
+}
+
+async function startGame() {
+    // 前回のAI設定をクリア
+    aiPlayers = [];
+
+    // プレイヤー数とボードサイズを取得
+    const playerCount = parseInt(document.getElementById('player-count').value);
+    const boardSize = parseInt(document.getElementById('board-size').value);
+
+    // 人間用のHandicapレベル
+    const handicapLevels = [];
+    // AI の難易度を格納するオブジェクト
+    const computerLevels = {};
+
+    // 各プレイヤーの設定を取得
+    for (let i = 0; i < playerCount; i++) {
+        handicapLevels.push(document.getElementById(`modal-player${i+1}-handicap`).value);
+        const control = document.getElementById(`modal-player${i+1}-control`).value;
+        if (control === "computer") {
+            aiPlayers.push(i);
+            computerLevels[i] = document.getElementById(`modal-player${i+1}-difficulty`).value;
+        }
+    }
+
+    // モーダルを閉じてUIを復帰
+    document.getElementById('level-modal').style.display = 'none';
+    document.querySelector('.container').style.filter = 'none';
+
+    // プレイヤーパネルを再構築
+    rebuildPlayerPanels(playerCount);
+
+    // サーバー側でゲームをリセット
+    try {
+        const response = await fetch('/reset_game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ size: boardSize, players: playerCount })
+        });
+        if (!response.ok) throw new Error('Game reset failed');
+    } catch (error) {
+        console.error('ゲームリセットエラー:', error);
+        alert('ゲームの初期化に失敗しました');
+        return;
+    }
+
+    // ハンディキャップを適用
+    try {
+        await fetch('/set_handicap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ levels: handicapLevels })
+        });
+    } catch (error) {
+        console.error('ハンディ設定エラー:', error);
+        alert('レベル設定に失敗しました');
+        return;
+    }
+
+    // AIプレイヤーの難易度をサーバーに設定
+    if (Object.keys(computerLevels).length > 0) {
+        try {
+            await fetch('/set_computer_levels', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ levels: computerLevels })
+            });
+        } catch (error) {
+            console.error('AIレベル設定エラー:', error);
+            alert('AIレベルの設定に失敗しました');
+            return;
+        }
+    }
+
+    // ボードを初期化し、イベントリスナー・タイマーをセット
+    initializeGame();
+    setupEventListeners();
+    startTimer();
+
+    // 最初のAI手番をすぐに実行
+    //await fetchGameState();
+}
+
+function rebuildPlayerPanels(count) {
+    const container = document.querySelector('.game-area');
+    const template = document.getElementById('player-panel-template');
+    document.querySelectorAll('.player-panel').forEach(p => p.remove());
+    for (let i = 0; i < count; i++) {
+        const clone = template.content.cloneNode(true);
+        const panel = clone.querySelector('.player-panel');
+        const colorClass = ['red', 'blue', 'green', 'yellow'][i];
+        panel.id = `player${i+1}-panel`;
+        panel.className = `player-panel ${colorClass}`;
+        panel.querySelector('h3').innerHTML = `Player${i+1}(${getColorName(PLAYER_COLORS[i].color)})`;
+        panel.querySelector('.pieces-container').id = `player${i+1}-pieces`;
+        container.appendChild(clone);
+    }
+    container.className = `game-area player-count-${count}`;
+}
+
+async function applyHandicap(levels) {
+    try {
+        await fetch('/set_handicap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ levels: levels })
+        });
+    } catch (error) {
+        console.error('ハンディ設定エラー:', error);
+        alert('レベル設定に失敗しました');
+    }
+}
+
+function initializeGame() {
+    createBoard();
+    fetchGameState();
+}
+
+function createBoard() {
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+    const size = currentBoardSize;
+    const cellSize = 24;
+    board.style.gridTemplateColumns = `repeat(${size}, ${cellSize}px)`;
+    board.style.width = `${size * cellSize + 2}px`;
+    for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.x = i;
+            cell.dataset.y = j;
+            cell.style.width = `${cellSize}px`;
+            cell.style.height = `${cellSize}px`;
+            cell.addEventListener('click', handleCellClick);
+            board.appendChild(cell);
+        }
+    }
+}
+
+async function fetchGameState() {
+    try {
+        const response = await fetch('/get_state');
+        gameState = await response.json();
+        currentPlayerIndex = gameState.current_player;
+        if (gameState.board_size !== currentBoardSize) {
+            currentBoardSize = gameState.board_size;
+            createBoard();
+        }
+        updateBoard();
+        renderPlayerPanels();
+        updateStatus();
+        checkGameEnd();
+        updatePanelInteractivity();
+        if (aiPlayers.length === gameState.players.length) {
+            resetTimer();
+        }
+        checkAIMove();
+    } catch (error) {
+        console.error('ゲーム状態の取得に失敗:', error);
+    }
+}
+
+function updateBoard() {
+    const cells = document.querySelectorAll('.cell');
+    const size = currentBoardSize;
+    for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+            const cellIndex = i * size + j;
+            const cell = cells[cellIndex];
+            const cellValue = gameState.board[i][j];
+            const player = gameState.players.find(p => p.number === cellValue);
+            let color = player ? player.color : '#ecf0f1';
+            if (gameState.last_placed_piece &&
+                gameState.last_placed_piece.player === cellValue &&
+                gameState.last_placed_piece.coordinates.some(([x, y]) => x === i && y === j)) {
+                color = darkenColor(color, 100);
+            }
+            cell.style.backgroundColor = color;
+        }
+    }
+}
+
+function renderPlayerPanels() {
+    gameState.players.forEach((player, index) => {
+        const panelId = `player${index+1}-panel`;
+        const piecesContainerId = `player${index+1}-pieces`;
+        const panel = document.getElementById(panelId);
+        const piecesContainer = document.getElementById(piecesContainerId);
+        const colorData = PLAYER_COLORS[index];
+        panel.style.borderColor = colorData.color;
+        panel.querySelector('h3').innerHTML =
+            `Player${index+1}(${getColorName(player.color)})<br>${player.corner.join(',')}`;
+        piecesContainer.innerHTML = player.pieces.map((piece, pieceIndex) => `
+            <div class="piece ${index === currentPlayerIndex ? 'active' : 'inactive'}"
+                 data-player="${index}"
+                 data-piece-index="${pieceIndex}"
+                 onclick="handlePieceSelection(${index}, ${pieceIndex})">
+                ${generatePieceHTML(piece.shape, player.color)}
+                <div class="piece-points">${piece.points}pt</div>
+            </div>
+        `).join('');
+        panel.style.display = 'block';
+    });
+}
+
+function generatePieceHTML(shape, color) {
+    return shape.map(row => `
+        <div class="piece-row">
+            ${row.map(cell => `
+                <div class="piece-cell ${cell ? 'filled' : ''}"
+                     style="${cell ? `background: ${color}; border-color: ${darkenColor(color)};` : ''}">
+                </div>
+            `).join('')}
+        </div>
+    `).join('');
+}
+
+function darkenColor(hex, amount = 20) {
+    const num = parseInt(hex.replace("#", ""), 16);
+    return `#${[
+        Math.max((num >> 16) - amount, 0),
+        Math.max((num >> 8 & 0x00FF) - amount, 0),
+        Math.max((num & 0x0000FF) - amount, 0)
+    ].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// 人間が操作しようとしたとき、AIターン中なら弾く
+function handlePieceSelection(playerIndex, pieceIndex) {
+    if (aiPlayers.includes(currentPlayerIndex)) return;
+    if (playerIndex !== currentPlayerIndex) {
+        showAlert('現在のプレイヤーではありません');
+        return;
+    }
+    selectedPieceIndex = pieceIndex;
+    document.querySelectorAll('.piece').forEach(p => p.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+}
+
+async function rotatePiece() {
+    //if (aiPlayers.includes(currentPlayerIndex)) return;
+    if (selectedPieceIndex === -1) {
+        showAlert('回転するピースを選択してください');
+        return;
+    }
+    try {
+        const response = await fetch('/rotate_piece', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: currentPlayerIndex,
+                pieceIndex: selectedPieceIndex
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || '回転に失敗しました');
+        await fetchGameState();
+    } catch (error) {
+        console.error('回転エラー:', error);
+        alert(error.message);
+    }
+}
+
+async function flipPiece() {
+    if (aiPlayers.includes(currentPlayerIndex)) return;
+    if (selectedPieceIndex === -1) {
+        showAlert('反転するピースを選択してください');
+        return;
+    }
+    try {
+        const response = await fetch('/flip_piece', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: currentPlayerIndex,
+                pieceIndex: selectedPieceIndex
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || '反転に失敗しました');
+        await fetchGameState();
+    } catch (error) {
+        console.error('反転エラー:', error);
+        alert(error.message);
+    }
+}
+
+async function handleCellClick(event) {
+    if (aiPlayers.includes(currentPlayerIndex)) return;
+    if (selectedPieceIndex === -1) {
+        showAlert('配置するピースを選択してください');
+        return;
+    }
+    const x = parseInt(event.target.dataset.x);
+    const y = parseInt(event.target.dataset.y);
+    try {
+        const response = await fetch('/place_piece', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: currentPlayerIndex,
+                pieceIndex: selectedPieceIndex,
+                x,
+                y
+            })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            selectedPieceIndex = -1;
+            // 人間の手番終了後はタイマーリセット
+            resetTimer();
+            await fetchGameState();
+        } else {
+            showAlert(result.message || '無効な配置です');
+        }
+    } catch (error) {
+        console.error('配置エラー:', error);
+        alert('通信に失敗しました(配置)');
+    }
+}
+
+function updateStatus() {
+    const status = document.getElementById('status');
+    const currentPlayer = gameState.players[currentPlayerIndex];
+    const remainingPoints = currentPlayer.pieces.reduce((sum, p) => sum + p.points, 0);
+    status.innerHTML = `
+        Player ${currentPlayer.number}(${PLAYER_COLORS[currentPlayerIndex].color === '#FF0000' ? '赤' :
+          PLAYER_COLORS[currentPlayerIndex].color === '#0000FF' ? '青' :
+          PLAYER_COLORS[currentPlayerIndex].color === '#00FF00' ? '緑' : '黄'})のターン<br>
+        残りピース: ${currentPlayer.pieces.length}個<br>
+        残りポイント: ${remainingPoints}<br>
+        連続パス: ${gameState.consecutive_passes}回
+    `;
+}
+
+function updatePanelInteractivity() {
+    document.querySelectorAll('.player-panel').forEach((panel, index) => {
+        const isActive = index === currentPlayerIndex;
+        panel.style.opacity = isActive ? 1 : 0.5;
+        panel.style.pointerEvents = (isActive && !aiPlayers.includes(currentPlayerIndex)) ? 'auto' : 'none';
+        panel.querySelectorAll('.piece').forEach(piece => {
+            piece.classList.toggle('inactive', !isActive);
+        });
+    });
+}
+
+async function passTurn(force = false) {
+    if (aiPlayers.includes(currentPlayerIndex) && !force) return;
+    try {
+        const response = await fetch('/pass_turn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: currentPlayerIndex,
+                force: force
+            })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            // AI or 人間のパス後も必ずリセット
+            resetTimer();
+            await fetchGameState();
+        } else {
+            showAlert(result.message || 'パスできません');
+        }
+    } catch (error) {
+        console.error('パスエラー:', error);
+        alert('通信に失敗しました(パス)');
+    }
+}
+
+function startTimer() {
+    resetTimer();
+    timer = setInterval(updateTimer, 1000);
+}
+
+function resetTimer() {
+    timeLeft = TURN_TIME;
+    updateTimerDisplay();
+    document.querySelector('.timer-display').classList.remove('blinking');
+}
+
+function updateTimer() {
+    timeLeft--;
+    updateTimerDisplay();
+    if (timeLeft === 10) {
+        const alertSound = document.getElementById('alertSound');
+        if (alertSound) {
+            alertSound.play().catch((error) => {
+                console.error("音声再生エラー:", error);
+            });
+        }
+    }
+    if (timeLeft <= 0) {
+        clearInterval(timer);
+        passTurn(true);
+        startTimer();
+    }
+}
+
+function updateTimerDisplay() {
+    const timerElement = document.getElementById('timer');
+    const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+    const seconds = (timeLeft % 60).toString().padStart(2, '0');
+    timerElement.textContent = `${minutes}:${seconds}`;
+    if (timeLeft <= 10) {
+        timerElement.parentElement.classList.add('blinking');
+    } else {
+        timerElement.parentElement.classList.remove('blinking');
+    }
+}
+
+function setupEventListeners() {
+    document.getElementById('rotate').addEventListener('click', rotatePiece);
+    document.getElementById('flip').addEventListener('click', flipPiece);
+    document.getElementById('pass').addEventListener('click', passTurn);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'r') rotatePiece();
+        if (e.key === 'f') flipPiece();
+        if (e.key === 'p') passTurn();
+    });
+}
+
+function checkGameEnd() {
+    if (gameState.consecutive_passes >= gameState.players.length ||
+        gameState.players.every(p => p.pieces.length === 0)) {
+        const scores = calculateScores();
+        showScoreModal(scores);
+        gameEnded = true;
+        clearInterval(timer);
+    } else {
+        scoreModal.style.display = 'none';
+        gameEnded = false;
+    }
+}
+
+function showScoreModal(scores) {
+    const maxScore = Math.max(...scores.map(s => s.score));
+    const winners = scores.filter(s => s.score === maxScore);
+    const isDraw = winners.length > 1;
+    scoreModal.style.cssText = `
+        position: fixed;
+        right: 30px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 300px;
+        height: 400px;
+        background: rgba(255, 255, 255, 0.8);
+        border: 2px solid #333;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        backdrop-filter: blur(5px);
+        cursor: move;
+        z-index: 1000;
+    `;
+    scoreModal.innerHTML = `
+        <div style="position: relative; height: 100%;">
+            <h3 style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+                ${isDraw ? '🏆 引き分け！' :
+                  `🏆 Player${winners[0].player}(${getColorName(winners[0].color)})の勝ち！`}
+            </h3>
+            <div style="overflow-y: auto; height: calc(100% - 40px);">
+                ${formatScores(scores, maxScore)}
+            </div>
+        </div>
+    `;
+    scoreModal.addEventListener('mousedown', initDrag);
+}
+
+function getColorName(color) {
+    switch(color) {
+        case '#FF0000': return '赤';
+        case '#0000FF': return '青';
+        case '#00FF00': return '緑';
+        case '#FFFF00': return '黄';
+        default: return '';
+    }
+}
+
+function formatScores(scores, maxScore) {
+    return scores.map(s => {
+        const colorName = getColorName(s.color);
+        const isWinner = s.score === maxScore;
+        return `
+            <div style="margin-bottom: 20px; ${isWinner ? 'background: rgba(255,215,0,0.2); padding: 5px; border-radius: 5px;' : ''}">
+                <strong>Player${s.player}(${colorName})</strong>
+                ${isWinner ? '👑' : ''}<br>
+                <div style="margin-left: 10px;">
+                    🏆 総合スコア: ${s.score}<br>
+                    ✅ 配置ポイント: ${s.details.placed}<br>
+                    ❌ 残りポイント: -${s.details.remaining}<br>
+                    ✨ ボーナス: +${s.details.bonus}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function calculateScores() {
+    const totalPossible = 89;
+    return gameState.players.map(player => {
+        const remainingPoints = player.pieces.reduce((sum, p) => sum + p.points, 0);
+        const placedPoints = totalPossible - remainingPoints;
+        const bonus = player.pieces.length === 0 ? 15 : 0;
+        return {
+            player: player.number,
+            color: player.color,
+            score: placedPoints + bonus,
+            details: {
+                placed: placedPoints,
+                remaining: remainingPoints,
+                bonus: bonus
+            }
+        };
+    });
+}
+
+function showAlert(message) {
+    const modal = document.getElementById('alert-modal');
+    document.getElementById('alert-message').textContent = message;
+    modal.style.display = 'block';
+}
+
+function hideAlert() {
+    document.getElementById('alert-modal').style.display = 'none';
+}
+
+function initDrag(e) {
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    initialX = scoreModal.offsetLeft;
+    initialY = scoreModal.offsetTop;
+    document.addEventListener('mousemove', handleDrag);
+    document.addEventListener('mouseup', stopDrag);
+}
+
+function handleDrag(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    scoreModal.style.left = `${initialX + dx}px`;
+    scoreModal.style.top = `${initialY + dy}px`;
+}
+
+function stopDrag() {
+    isDragging = false;
+    document.removeEventListener('mousemove', handleDrag);
+    document.removeEventListener('mouseup', stopDrag);
+}
+
+// AI の手番処理
+function checkAIMove() {
+    if (gameEnded) return;
+    if (aiPlayers.includes(currentPlayerIndex)) {
+        aiMove();
+    }
+}
+
+function aiMove() {
+    setTimeout(() => {
+        fetch('/computer_move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ player: currentPlayerIndex })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+            // AIが動いたらタイマーをリセットしてゲーム状態を取得
+            resetTimer();
+            return fetchGameState();
+        })
+        .catch(error => console.error('AI move error:', error));
+    }, 2000);
+}

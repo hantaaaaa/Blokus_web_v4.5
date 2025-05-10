@@ -1,0 +1,357 @@
+/* style.css */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: #f0f2f5;
+    padding: 20px;
+}
+
+.container {
+    max-width: 3000px;
+    margin: 0 auto;
+    transition: filter 0.3s ease;
+}
+
+h1 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 30px;
+}
+
+.header-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.level-display {
+    font-size: 1.1em;
+    color: #2c3e50;
+    padding: 8px 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+/* 点滅アニメーション追加 */
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+.timer-display {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.timer-display.blinking {
+    animation: blink 1s infinite;
+    color: #e74c3c;
+}
+
+.game-area {
+    display: flex;
+    gap: 20px;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.player-panel {
+    width: 200px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 80vh;
+    overflow-y: auto;
+    transition: all 0.3s ease;
+    border: 3px solid;
+}
+
+/* プレイヤー色クラスを追加 */
+.player-panel.red { border-color: #FF0000; }
+.player-panel.blue { border-color: #0000FF; }
+.player-panel.green { border-color: #00FF00; }
+.player-panel.yellow { border-color: #FFFF00; }
+
+.player-panel h3 {
+    text-align: center;
+    margin-bottom: 15px;
+    padding: 5px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.05);
+}
+
+@media (min-width: 1200px) {
+  /* ゲームエリア全体を横一列に並べる */
+  .game-area {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-evenly;
+    gap: 20px;
+    flex-wrap: nowrap;
+  }
+
+  /* 2人プレイの場合：左から [player1, ボード, player2] */
+  .game-area.player-count-2 > #player1-panel {
+    order: 1;
+  }
+  .game-area.player-count-2 > .central-area {
+    order: 2;
+  }
+  .game-area.player-count-2 > #player2-panel {
+    order: 3;
+  }
+
+  /* 3人プレイの場合：左から [player1, player2, ボード, player3] */
+  .game-area.player-count-3 > #player1-panel {
+    order: 1;
+  }
+  .game-area.player-count-3 > #player2-panel {
+    order: 2;
+  }
+  .game-area.player-count-3 > .central-area {
+    order: 3;
+  }
+  .game-area.player-count-3 > #player3-panel {
+    order: 4;
+  }
+
+  /* 4人プレイの場合：左から [player1, player2, ボード, player3, player4] */
+  .game-area.player-count-4 > #player1-panel {
+    order: 1;
+  }
+  .game-area.player-count-4 > #player2-panel {
+    order: 2;
+  }
+  .game-area.player-count-4 > .central-area {
+    order: 3;
+  }
+  .game-area.player-count-4 > #player3-panel {
+    order: 4;
+  }
+  .game-area.player-count-4 > #player4-panel {
+    order: 5;
+  }
+
+  /* 各要素の横幅・拡大比率の調整 */
+  .central-area {
+    flex: 3 1 0;      /* ボードは大きめに表示（例：3対1の比率） */
+    min-width: 300px;  /* 必要に応じて調整 */
+  }
+  .player-panel {
+    flex: 1 1 0;
+    min-width: 75px;  /* 必要に応じて調整 */
+  }
+}
+
+.left-panel {
+    border: 3px solid #FF0000;
+}
+
+.left-panel h3 {
+    background: rgba(255,0,0,0.1);
+}
+
+.right-panel {
+    border: 3px solid #0000FF;
+}
+
+.right-panel h3 {
+    background: rgba(0,0,255,0.1);
+}
+
+.central-area {
+    flex: 1;
+    max-width: 530px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.board {
+    background: #34495e;
+    padding: 2px;  /* 変更: 5px → 2px */
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    display: grid;
+    grid-template-columns: repeat(var(--board-size, 20), 24px);  /* 変更: 25px → 24px */
+    gap: 0;  /* 変更: 1px → 0 */
+    min-height: unset;  /* 追加 */
+    width: fit-content;  /* 追加 */
+    margin: 0 auto;  /* 追加 */
+}
+
+.cell {
+    width: 24px;   /* 変更: 25px → 24px */
+    height: 24px;  /* 変更: 25px → 24px */
+    background: #ecf0f1;
+    border: 1px solid #bdc3c7;
+    box-sizing: border-box;  /* 追加 */
+}
+
+.cell:hover {
+    background: #d0d3d4;
+}
+
+.control-panel {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pieces-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.piece-points {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 0.8em;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 0 2px black;
+    background: rgba(0,0,0,0.3);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.piece {
+    position: relative;
+    padding: 8px;
+    background: #fff;
+    border: 2px solid #3498db;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: 80px;
+}
+
+.piece.selected {
+    transform: scale(1.05);
+    border-color: #e74c3c;
+    box-shadow: 0 0 8px rgba(231, 76, 60, 0.3);
+    z-index: 2;
+}
+
+.piece.inactive {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.piece-row {
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+}
+
+.piece-cell {
+    width: 18px;
+    height: 18px;
+    margin: 1px;
+    background: transparent;
+    border: 1px solid #ddd;
+    flex-shrink: 0;
+}
+
+.piece-cell.filled {
+    background: #3498db;
+    border: 1px solid #2980b9;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: center;
+}
+
+button {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    background: #3498db;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+button:hover {
+    background: #2980b9;
+}
+
+#status {
+    text-align: center;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+/* レベル選択モーダル */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.modal-handicap {
+    margin: 20px 0;
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.alert-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.2);
+    z-index: 10000;
+    display: none;
+}
+
+.alert-modal p {
+    margin-bottom: 15px;
+}
+
+.alert-modal button {
+    padding: 8px 20px;
+    margin: 0 5px;
+}

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blokus</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- 10秒前の警告音用のaudio要素 -->
+    <audio id="alertSound" src="/static/alert.mp3" preload="auto"></audio>
+    
+    <!-- レベル選択モーダル -->
+    <div id="level-modal" class="modal">
+        <div class="modal-content">
+            <h2>えらんでちょうだい</h2>
+            <div style="margin: 15px 0;">
+                <label>対戦人数:
+                    <select id="player-count" onchange="updatePlayerLevels()">
+                        <option value="2">2人</option>
+                        <option value="3">3人</option>
+                        <option value="4">4人</option>
+                    </select>
+                </label>
+            </div>
+            <div class="modal-handicap">
+                <div id="player-levels">
+                    <!-- 各プレイヤーごとに、Handicap（人間用）とControl、そして（ControlがComputerの場合のみ）Difficulty -->
+                    <label>
+                        Player1:
+                        <select id="modal-player1-handicap">
+                            <option value="0">10ピース</option>
+                            <option value="1">15ピース</option>
+                            <option value="2" selected>21ピース</option>
+                        </select>
+                        <select id="modal-player1-control">
+                            <option value="human" selected>Human</option>
+                            <option value="computer">Computer</option>
+                        </select>
+                        <div id="modal-player1-difficulty-container" style="display:none;">
+                            Difficulty:
+                            <select id="modal-player1-difficulty">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3" selected>3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                    </label>
+                    <br>
+                    <label>
+                        Player2:
+                        <select id="modal-player2-handicap">
+                            <option value="0">10ピース</option>
+                            <option value="1">15ピース</option>
+                            <option value="2" selected>21ピース</option>
+                        </select>
+                        <select id="modal-player2-control">
+                            <option value="human" selected>Human</option>
+                            <option value="computer">Computer</option>
+                        </select>
+                        <div id="modal-player2-difficulty-container" style="display:none;">
+                            Difficulty:
+                            <select id="modal-player2-difficulty">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3" selected>3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                    </label>
+                    <br>
+                    <label class="extra-player" style="display:none;">
+                        Player3:
+                        <select id="modal-player3-handicap">
+                            <option value="0">10ピース</option>
+                            <option value="1">15ピース</option>
+                            <option value="2" selected>21ピース</option>
+                        </select>
+                        <select id="modal-player3-control">
+                            <option value="human" selected>Human</option>
+                            <option value="computer">Computer</option>
+                        </select>
+                        <div id="modal-player3-difficulty-container" style="display:none;">
+                            Difficulty:
+                            <select id="modal-player3-difficulty">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3" selected>3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                    </label>
+                    <br>
+                    <label class="extra-player" style="display:none;">
+                        Player4:
+                        <select id="modal-player4-handicap">
+                            <option value="0">10ピース</option>
+                            <option value="1">15ピース</option>
+                            <option value="2" selected>21ピース</option>
+                        </select>
+                        <select id="modal-player4-control">
+                            <option value="human" selected>Human</option>
+                            <option value="computer">Computer</option>
+                        </select>
+                        <div id="modal-player4-difficulty-container" style="display:none;">
+                            Difficulty:
+                            <select id="modal-player4-difficulty">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3" selected>3</option>
+                                <option value="4">4</option>
+                                <option value="5">5</option>
+                            </select>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div style="margin: 20px 0;">
+                <label>ボードサイズ:
+                    <select id="board-size">
+                        <option value="20" selected>20×20(4人用)</option>
+                        <option value="17">17×17(3人用)</option>
+                        <option value="14">14×14(2人用)</option>
+                    </select>
+                </label>
+            </div>
+            <button onclick="startGame()">ゲーム開始</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header-controls">
+            <div class="level-display"></div>
+            <div class="timer-display">
+                <i class="fas fa-clock"></i>
+                <span id="timer">00:00</span>
+            </div>
+        </div>
+        <h1>Blokus</h1>
+        <div class="game-area">
+            <!-- 左パネル (Player1) -->
+            <div class="player-panel left-panel" id="player1-panel">
+                <h3>Player1(赤)</h3>
+                <div class="pieces-container" id="player1-pieces"></div>
+            </div>
+
+            <!-- 中央エリア -->
+            <div class="central-area">
+                <div class="board" id="board"></div>
+                <div class="control-panel">
+                    <div id="status" class="status"></div>
+                    <div class="actions">
+                        <button id="rotate">回転 (R)</button>
+                        <button id="flip">反転 (F)</button>
+                        <button id="pass">パス (P)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右プレイヤーパネル -->
+            <div class="player-panel right-panel" id="player2-panel">
+                <h3>Player2(青)</h3>
+                <div class="pieces-container" id="player2-pieces"></div>
+            </div>
+        </div>
+        <!-- 追加パネル用のテンプレート -->
+        <template id="player-panel-template">
+            <div class="player-panel">
+                <h3></h3>
+                <div class="pieces-container"></div>
+            </div>
+        </template>
+    </div>
+    <div id="alert-modal" class="alert-modal">
+        <p id="alert-message"></p>
+        <button onclick="hideAlert()">OK</button>
+    </div>
+    <script src="/static/blokus.js"></script>
+    <script>
+        // Control選択が変わったときにDifficultyの表示を切り替える
+        function updatePlayerLevels() {
+            const count = parseInt(document.getElementById('player-count').value);
+            document.querySelectorAll('.extra-player').forEach(el => el.style.display = 'none');
+            if (count >= 3) {
+                document.querySelector('#modal-player3-handicap').parentElement.style.display = 'inline-block';
+            }
+            if (count === 4) {
+                document.querySelector('#modal-player4-handicap').parentElement.style.display = 'inline-block';
+            }
+        }
+        document.querySelectorAll('select[id^="modal-player"]').forEach(select => {
+            if (select.id.endsWith("control")) {
+                select.addEventListener('change', (e) => {
+                    const playerId = e.target.id.match(/modal-player(\d+)-control/)[1];
+                    const diffContainer = document.getElementById(`modal-player${playerId}-difficulty-container`);
+                    if (e.target.value === "computer") {
+                        diffContainer.style.display = 'inline-block';
+                    } else {
+                        diffContainer.style.display = 'none';
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
